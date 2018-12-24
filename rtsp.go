@@ -1,34 +1,30 @@
-// 用于处理RTSP的请求协议
-package main
+// Package rtspgo 是一个RTSP处理模块
+package rtspgo
 
 import (
 	"fmt"
 	"net"
+	"strings"
 )
+
+// contextKey 是用于context.WithValue的使用
+type contextKey struct {
+	name string
+}
+
+func (c *contextKey) String() string {
+	return "rtsp context value " + c.name
+}
 
 // RTSPRequest 用于解析RTSP请求头的参数
 type RTSPRequest struct {
 	method string
 	url    string
+	cseq   string
 }
 
-func main() {
-	listen, err := net.Listen("tcp", ":554")
-	if err != nil {
-		fmt.Println("listen error: ", err)
-		return
-	}
-
-	for {
-		conn, err := listen.Accept()
-		if err != nil {
-			fmt.Println("accept error:", err)
-			break
-		}
-
-		go HandleConn(conn)
-	}
-}
+// RtspMethodType RTSP支持的所有方法
+var RtspMethodType = []string{"OPTIONS", "DESCRIBE", "SETUP", "PLAY", "PAUSE", "TEARDOWN"}
 
 // HandleConn 提供对RTSP协议的解析
 func HandleConn(conn net.Conn) {
@@ -38,21 +34,31 @@ func HandleConn(conn net.Conn) {
 
 	for {
 		fmt.Println("start to read from conn ...")
-		n, err := conn.Read(buf)
+		_, err := conn.Read(buf)
 		if err != nil {
 			fmt.Println("conn read error: ", err)
 			continue
 		}
-		fmt.Printf("read %d bytes, content is %s\n", n, string(buf[:n]))
+		//fmt.Printf("read %d bytes, content is %s\n", n, string(buf[:n]))
 		var rtspReq RTSPRequest
 		// 解析RTSP的方法
 		{
-			rtspReq.method = "OPTIONS"
+			strReq := string(buf)
+			sliceStrReq := strings.Split(string(strReq), "\r\n")
+			// 对首行方法名进行解析
+			sliceFirstLine := strings.Split(string(sliceStrReq[0]), " ")
+			rtspReq.method = sliceFirstLine[0]
+			i, err := FindStrFromSlice(rtspReq.method, RtspMethodType)
+			if err != nil || i == -1 {
+				fmt.Println("unkown Method")
+				continue
+			}
+			// 对CSeq进行解析
 		}
 		switch rtspReq.method {
 		case "OPTIONS":
 			{
-				HandleOptions(conn)
+				HandleOptions(conn, rtspReq)
 			}
 		default:
 			{
@@ -63,7 +69,7 @@ func HandleConn(conn net.Conn) {
 }
 
 // HandleOptions 处理RTSP中的OPTIONS方法
-func HandleOptions(conn net.Conn) {
+func HandleOptions(conn net.Conn, info RTSPRequest) {
 	fmt.Println("Handle OPTIONS!")
 	conn.Write([]byte("options methods"))
 }
